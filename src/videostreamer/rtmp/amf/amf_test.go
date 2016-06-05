@@ -4,7 +4,6 @@ import (
 	"testing"
 	"bytes"
 	"reflect"
-	"fmt"
 )
 
 func deepEqual(res, val interface{}) (equal bool) {
@@ -78,7 +77,6 @@ func maketest(val interface{}, expectsiz int, t *testing.T) {
 	}
 
 	res := DecodeAMF(&buf)
-	fmt.Println(res)
 
 	if !deepEqual(res, val) {
 		t.Errorf("values %v(of type %T) and %v(of type %T) are not equal", res, res, val, val)
@@ -92,4 +90,4 @@ func TestVerbatim(t *testing.T) {
 	maketest(map[string]AMFValue{"avc": 3, "ggg":42}, 29, t)
 	maketest(struct{A string}{A: "ac"}, 12, t)
 	maketest(struct{A string `name:"drrr"`}{A: "ac"}, 15, t)
-}
+}f

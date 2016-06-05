@@ -4,7 +4,6 @@ import (
 	"io"
 	"videostreamer/util"
 	"reflect"
-	"fmt"
 )
 
 const (
@@ -39,7 +38,6 @@ func EncodeAMF(out io.Writer, raw AMFValue) (ret int, err error) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("recover %s\n", r)
 			err = r.(error)
 		}
 	}()
