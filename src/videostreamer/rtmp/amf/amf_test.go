@@ -90,4 +90,4 @@ func TestVerbatim(t *testing.T) {
 	maketest(map[string]AMFValue{"avc": 3, "ggg":42}, 29, t)
 	maketest(struct{A string}{A: "ac"}, 12, t)
 	maketest(struct{A string `name:"drrr"`}{A: "ac"}, 15, t)
-}f
+}
