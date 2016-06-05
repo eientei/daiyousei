@@ -6,14 +6,18 @@ import (
 	"bytes"
 )
 
-func DecodeBuf(in io.Reader, size int) []byte {
-	buf := make([]byte, size)
-	in.Read(buf)
-	return buf
+func ReadBuf(in io.Reader, size int) (ret []byte, err error) {
+	ret = make([]byte, size)
+	_, err = in.Read(ret)
+	return
 }
 
-func DecodeInt(in io.Reader, size int) (ret int) {
-	buf := DecodeBuf(in, size)
+func DecodeInt(in io.Reader, size int) (ret int, err error) {
+	var buf []byte;
+	buf, err = ReadBuf(in, size)
+	if err != nil {
+		return
+	}
 	for i := 0; i < size; i++ {
 		ret <<= 8
 		ret |= int(buf[i])
@@ -21,14 +25,24 @@ func DecodeInt(in io.Reader, size int) (ret int) {
 	return
 }
 
-func DecodeDouble(in io.Reader) float64 {
-	var res float64
-	binary.Read(bytes.NewBuffer(DecodeBuf(in, 8)), binary.BigEndian, &res)
-	return res
+func DecodeDouble(in io.Reader) (ret float64, err error) {
+	var (
+		buf []byte
+	)
+	buf, err = ReadBuf(in, 8)
+	if err != nil {
+		return
+	}
+	err = binary.Read(bytes.NewBuffer(buf), binary.BigEndian, &ret)
+	return
 }
 
-func DecodeIntLE(in io.Reader, size int) (ret int) {
-	buf := DecodeBuf(in, size)
+func DecodeIntLE(in io.Reader, size int) (ret int, err error) {
+	var buf []byte
+	buf, err = ReadBuf(in, size)
+	if err != nil {
+		return
+	}
 	for i := 0; i < size; i++ {
 		ret <<= 8
 		ret |= int(buf[size-i-1])
@@ -36,6 +50,12 @@ func DecodeIntLE(in io.Reader, size int) (ret int) {
 	return
 }
 
-func DecodeString(in io.Reader, size int) string {
-	return string(DecodeBuf(in, size))
+func DecodeString(in io.Reader, size int) (ret string, err error)  {
+	var buf []byte
+	buf, err = ReadBuf(in, size)
+	if err != nil {
+		return
+	}
+	ret = string(buf)
+	return
 }

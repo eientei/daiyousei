@@ -26,21 +26,18 @@ func writerType(out io.Writer, value int) (int, error) {
 	return util.EncodeInt(out, value, 1)
 }
 
-func assure(ret int, err error) int {
-	if err != nil {
-		panic(err)
-	}
-	return ret
-}
-
 func EncodeAMF(out io.Writer, raw AMFValue) (ret int, err error) {
 	value := reflect.ValueOf(raw)
 
-	defer func() {
-		if r := recover(); r != nil {
-			err = r.(error)
+	defer recover()
+
+	assure := func (inval int, inerr error) {
+		ret += inval
+		err = inerr
+		if err != nil {
+			panic(err)
 		}
-	}()
+	}
 
 	switch value.Kind() {
 	case reflect.Float32:
@@ -64,33 +61,33 @@ func EncodeAMF(out io.Writer, raw AMFValue) (ret int, err error) {
 	case reflect.Uint64:
 		fallthrough
 	case reflect.Int:
-		ret += assure(writerType(out, AMF_NUMBER))
-		ret += assure(util.EncodeDouble(out, value.Convert(reflect.TypeOf(float64(0))).Float()))
+		assure(writerType(out, AMF_NUMBER))
+		assure(util.EncodeDouble(out, value.Convert(reflect.TypeOf(float64(0))).Float()))
 	case reflect.Bool:
-		ret += assure(writerType(out, AMF_BOOL))
-		ret += assure(util.EncodeBoolean(out, value.Bool()))
+		assure(writerType(out, AMF_BOOL))
+		assure(util.EncodeBoolean(out, value.Bool()))
 	case reflect.String:
-		ret += assure(writerType(out, AMF_STRING))
-		ret += assure(util.EncodeInt(out, len(value.String()), 2))
-		ret += assure(util.EncodeString(out, value.String()))
+		assure(writerType(out, AMF_STRING))
+		assure(util.EncodeInt(out, len(value.String()), 2))
+		assure(util.EncodeString(out, value.String()))
 	case reflect.Invalid:
-		ret += assure(writerType(out, AMF_NULL))
+		assure(writerType(out, AMF_NULL))
 	case reflect.Slice:
-		ret += assure(writerType(out, AMF_ARRAY))
-		ret += assure(util.EncodeInt(out, value.Len(), 4))
+		assure(writerType(out, AMF_ARRAY))
+		assure(util.EncodeInt(out, value.Len(), 4))
 		for i := 0; i < value.Len(); i++ {
-			ret += assure(EncodeAMF(out, value.Index(i).Interface()))
+			assure(EncodeAMF(out, value.Index(i).Interface()))
 		}
 	case reflect.Map:
-		ret += assure(writerType(out, AMF_MAP))
+		assure(writerType(out, AMF_MAP))
 		for _, v := range value.MapKeys() {
-			ret += assure(util.EncodeInt(out, v.Len(), 2))
-			ret += assure(util.EncodeString(out, v.String()))
-			ret += assure(EncodeAMF(out, value.MapIndex(v).Interface()))
+			assure(util.EncodeInt(out, v.Len(), 2))
+			assure(util.EncodeString(out, v.String()))
+			assure(EncodeAMF(out, value.MapIndex(v).Interface()))
 		}
 		util.EncodeInt(out, AMF_END, 3)
 	case reflect.Struct:
-		ret += assure(writerType(out, AMF_OBJECT))
+		assure(writerType(out, AMF_OBJECT))
 		typ := value.Type()
 		for i := 0; i < value.NumField(); i++ {
 			fld := typ.Field(i)
@@ -101,50 +98,67 @@ func EncodeAMF(out io.Writer, raw AMFValue) (ret int, err error) {
 				name = tagname
 			}
 
-			ret += assure(util.EncodeInt(out, len(name), 2))
-			ret += assure(util.EncodeString(out, name))
-			ret += assure(EncodeAMF(out, value.FieldByName(fldname).Interface()))
+			assure(util.EncodeInt(out, len(name), 2))
+			assure(util.EncodeString(out, name))
+			assure(EncodeAMF(out, value.FieldByName(fldname).Interface()))
 		}
-		ret += assure(util.EncodeInt(out, AMF_END, 3))
+		assure(util.EncodeInt(out, AMF_END, 3))
 	default:
-		ret += assure(writerType(out, AMF_UNDEFINED))
+		assure(writerType(out, AMF_UNDEFINED))
 	}
 
-	return ret, err
+	return
 }
 
-func DecodeAMF(in io.Reader) AMFValue {
-	typ := util.DecodeInt(in, 1)
-	switch typ {
-	case AMF_NUMBER:
-		return util.DecodeDouble(in)
-	case AMF_BOOL:
-		return util.DecodeInt(in, 1) != 0
-	case AMF_STRING:
-		siz := util.DecodeInt(in, 2)
-		return string(util.DecodeBuf(in, siz))
-	case AMF_ARRAY:
-		siz := util.DecodeInt(in, 4)
-		arr := make([]AMFValue, siz)
-		for i := 0; i < siz; i++ {
-			arr[i] = DecodeAMF(in)
+func DecodeAMF(in io.Reader) (ret AMFValue, err error) {
+	var siz int
+
+	defer recover()
+
+	assure := func(inval AMFValue, inerr error) AMFValue {
+		ret = inval
+		err = inerr
+		if err != nil {
+			panic(err)
 		}
-		return arr
+		return ret
+	}
+
+	assure(util.DecodeInt(in, 1))
+	switch ret {
+	case AMF_NUMBER:
+		assure(util.DecodeDouble(in))
+	case AMF_BOOL:
+		ret = assure(util.DecodeInt(in, 1)) != 0
+	case AMF_STRING:
+		siz = assure(util.DecodeInt(in, 2)).(int)
+		assure(util.DecodeString(in, siz))
+	case AMF_ARRAY:
+		siz = assure(util.DecodeInt(in, 4)).(int)
+		arr := make(AMFArray, siz)
+		for i := 0; i < siz; i++ {
+			arr[i] = assure(DecodeAMF(in))
+		}
+		ret = arr
+	case AMF_NULL:
+		ret = nil
 	case AMF_MAP:
 		fallthrough
 	case AMF_OBJECT:
-		res := make(map[string]AMFValue)
+		var (
+			str  string
+			rmap AMFMap = make(AMFMap)
+		)
 		for {
-			siz := util.DecodeInt(in, 2)
-			str := util.DecodeString(in, siz)
-			val := DecodeAMF(in)
-			if siz == 0 && val == nil {
+			siz = assure(util.DecodeInt(in, 2)).(int)
+			str = assure(util.DecodeString(in, siz)).(string)
+			assure(DecodeAMF(in))
+			if siz == 0 && ret == AMF_END {
 				break
 			}
-			res[str] = val
+			rmap[str] = ret
 		}
-		return res
-	default:
-		return nil
+		ret = rmap
 	}
+	return
 }

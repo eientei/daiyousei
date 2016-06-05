@@ -61,6 +61,8 @@ func deepEqual(res, val interface{}) (equal bool) {
 				}
 			}
 		}
+	case reflect.Invalid:
+		equal = val == nil
 	}
 	return
 }
@@ -69,14 +71,17 @@ func maketest(val interface{}, expectsiz int, t *testing.T) {
 	var buf bytes.Buffer
 	siz,err := EncodeAMF(&buf, val)
 	if err != nil {
-		t.Error("err != nil")
+		t.Error("err(%s) != nil", err)
 	}
 
 	if (expectsiz > 0 && expectsiz != siz) {
-		t.Error("siz(%d) != %d", siz, expectsiz)
+		t.Errorf("siz(%d) != %d", siz, expectsiz)
 	}
 
-	res := DecodeAMF(&buf)
+	res, err := DecodeAMF(&buf)
+	if err != nil {
+		return
+	}
 
 	if !deepEqual(res, val) {
 		t.Errorf("values %v(of type %T) and %v(of type %T) are not equal", res, res, val, val)
@@ -86,8 +91,11 @@ func maketest(val interface{}, expectsiz int, t *testing.T) {
 func TestVerbatim(t *testing.T) {
 	maketest(123, 9, t)
 	maketest(123.0, 9, t)
+	maketest(true, 2, t)
+	maketest(false, 2, t)
 	maketest([]int{1,2,3}, 32, t)
 	maketest(map[string]AMFValue{"avc": 3, "ggg":42}, 29, t)
 	maketest(struct{A string}{A: "ac"}, 12, t)
 	maketest(struct{A string `name:"drrr"`}{A: "ac"}, 15, t)
+	maketest(nil, 1, t)
 }
