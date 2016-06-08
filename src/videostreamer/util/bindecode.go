@@ -1,9 +1,9 @@
 package util
 
 import (
-	"io"
-	"encoding/binary"
 	"bytes"
+	"encoding/binary"
+	"io"
 )
 
 func ReadBuf(in io.Reader, size int) (ret []byte, err error) {
@@ -13,7 +13,7 @@ func ReadBuf(in io.Reader, size int) (ret []byte, err error) {
 }
 
 func DecodeInt(in io.Reader, size int) (ret int, err error) {
-	var buf []byte;
+	var buf []byte
 	if buf, err = ReadBuf(in, size); err != nil {
 		return
 	}
@@ -47,7 +47,7 @@ func DecodeIntLE(in io.Reader, size int) (ret int, err error) {
 	return
 }
 
-func DecodeString(in io.Reader, size int) (ret string, err error)  {
+func DecodeString(in io.Reader, size int) (ret string, err error) {
 	var buf []byte
 	if buf, err = ReadBuf(in, size); err != nil {
 		return

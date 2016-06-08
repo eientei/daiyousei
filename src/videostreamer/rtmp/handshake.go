@@ -1,13 +1,13 @@
 package rtmp
 
 import (
-	"io"
-	"videostreamer/util"
-	"fmt"
-	"videostreamer/util/logger"
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
-	"bytes"
+	"fmt"
+	"io"
+	"math/rand"
+	"videostreamer/util"
 )
 
 var (
@@ -28,8 +28,8 @@ var (
 		0x02, 0x9E, 0x7E, 0x57, 0x6E, 0xEC, 0x5D, 0x2D, 0x29, 0x80, 0x6F, 0xAB,
 		0x93, 0xB8, 0xE6, 0x36, 0xCF, 0xEB, 0x31, 0xAE,
 	}
-	clientKey2 = clientKey[:30]
-	serverKey2 = serverKey[:36]
+	clientKey2    = clientKey[:30]
+	serverKey2    = serverKey[:36]
 	serverVersion = []byte{
 		0x0D, 0x0E, 0x0A, 0x0D,
 	}
@@ -41,7 +41,7 @@ func makeDigest(buf []byte, key []byte, offs int) []byte {
 		if offs != 0 {
 			sign.Write(buf[:offs])
 		}
-		if len(buf) != offs + 32 {
+		if len(buf) != offs+32 {
 			sign.Write(buf[offs+32:])
 		}
 	} else {
@@ -52,7 +52,7 @@ func makeDigest(buf []byte, key []byte, offs int) []byte {
 
 func findDigest(buf []byte, mod int) (offs int) {
 	for n := 0; n < 4; n++ {
-		offs += int(buf[mod + n])
+		offs += int(buf[mod+n])
 	}
 
 	offs = (offs % 728) + mod + 4
@@ -64,46 +64,63 @@ func findDigest(buf []byte, mod int) (offs int) {
 	return
 }
 
-func stage0(in io.Reader) (dig []byte, err error) {
+func stage1(buf []byte) (dig []byte, err error) {
 	var (
-		C0   []byte
-		time []byte
-		vers []byte
-		offs int
+		roffs int
+		woffs int
 	)
-
-	C0, err = util.ReadBuf(in, 1537)
-	if err != nil {
+	if buf[0] != 0x03 {
+		err = fmt.Errorf("First byte of C0 was %v instead of 0x03", buf[0])
 		return
 	}
-	if (C0[0] != 0x03) {
-		err = fmt.Errorf("First byte of C0 was %v instead of 0x03", C0[0])
-		return
-	}
-	time = C0[1:5]
-	vers = C0[5:9]
-	logger.Debugf("Handshake C0 received with time = %v and version = %v", time, vers)
 
-	if offs = findDigest(C0[1:], 772); offs == -1 {
-		if offs = findDigest(C0[1:], 8); offs == -1 {
+	if roffs = findDigest(buf[1:], 772); roffs == -1 {
+		if roffs = findDigest(buf[1:], 8); roffs == -1 {
 			err = fmt.Errorf("handshake: digest was not found")
 			return
 		}
 	}
 
-	logger.Debugf("Handshake offset: %v", offs)
-	dig = makeDigest(C0[offs+1:offs+1+32], serverKey, -1)
+	dig = makeDigest(buf[roffs+1:roffs+1+32], serverKey, -1)
+
+	copy(buf[5:9], serverVersion)
+	rand.Read(buf[9:])
+	for n := 9; n < 13; n++ {
+		woffs += int(buf[n])
+	}
+	woffs = (woffs % 728) + 12
+	copy(buf[woffs+1:], makeDigest(buf[1:], serverKey2, woffs))
 	return
 }
 
-func Handshake(in io.Reader) (err error) {
-	logger.Debug("Handshake requested")
-	var (
-		dig []byte
-	)
-	if dig, err = stage0(in); err != nil {
+func stage2(buf []byte, dig []byte) (err error) {
+	if _, err = rand.Read(buf); err != nil {
 		return
 	}
-	logger.Debug(dig)
+	copy(buf[1536-32:], makeDigest(buf, dig, 1536-32))
+	return
+}
+
+func Handshake(rw io.ReadWriter) (err error) {
+	var (
+		dig []byte
+		buf []byte
+	)
+
+	if buf, err = util.ReadBuf(rw, 1537); err != nil {
+		return
+	}
+
+	if dig, err = stage1(buf); err != nil {
+		return
+	}
+	rw.Write(buf)
+
+	if err = stage2(buf[1:], dig); err != nil {
+		return
+	}
+	rw.Write(buf[1:])
+
+	_, err = util.ReadBuf(rw, 1536)
 	return
 }

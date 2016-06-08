@@ -32,7 +32,7 @@ func EncodeDouble(out io.Writer, value float64) (int, error) {
 
 func EncodeBoolean(out io.Writer, value bool) (int, error) {
 	num := 0
-	if (value) {
+	if value {
 		num = 1
 	}
 	return EncodeInt(out, num, 1)

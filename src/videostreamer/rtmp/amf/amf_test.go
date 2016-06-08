@@ -1,9 +1,9 @@
 package amf
 
 import (
-	"testing"
 	"bytes"
 	"reflect"
+	"testing"
 )
 
 func deepEqual(res, val interface{}) (equal bool) {
@@ -18,10 +18,10 @@ func deepEqual(res, val interface{}) (equal bool) {
 		valval := reflect.ValueOf(val)
 		resval := reflect.ValueOf(res)
 		equal = valval.Len() == resval.Len()
-		if (equal) {
+		if equal {
 			for i := 0; i < valval.Len(); i++ {
 				equal = deepEqual(resval.Index(i).Interface(), valval.Index(i).Interface())
-				if (!equal) {
+				if !equal {
 					break
 				}
 			}
@@ -32,30 +32,30 @@ func deepEqual(res, val interface{}) (equal bool) {
 		switch reflect.ValueOf(val).Kind() {
 		case reflect.Struct:
 			equal = len(resval.MapKeys()) == valval.NumField()
-			if (equal) {
+			if equal {
 				for _, key := range resval.MapKeys() {
 					fldname := key.String()
 					if !valval.FieldByName(fldname).IsValid() {
 						t := reflect.TypeOf(val)
 						for i := 0; i < t.NumField(); i++ {
-							if (t.Field(i).Tag.Get("name") == key.String()) {
+							if t.Field(i).Tag.Get("name") == key.String() {
 								fldname = t.Field(i).Name
 								break
 							}
 						}
 					}
 					equal = deepEqual(resval.MapIndex(key).Interface(), valval.FieldByName(fldname).Interface())
-					if (!equal) {
+					if !equal {
 						break
 					}
 				}
 			}
 		case reflect.Map:
 			equal = len(resval.MapKeys()) == len(valval.MapKeys())
-			if (equal) {
+			if equal {
 				for _, key := range resval.MapKeys() {
 					equal = deepEqual(resval.MapIndex(key).Interface(), valval.MapIndex(key).Interface())
-					if (!equal) {
+					if !equal {
 						break
 					}
 				}
@@ -69,12 +69,12 @@ func deepEqual(res, val interface{}) (equal bool) {
 
 func maketest(val interface{}, expectsiz int, t *testing.T) {
 	var buf bytes.Buffer
-	siz,err := EncodeAMF(&buf, val)
+	siz, err := EncodeAMF(&buf, val)
 	if err != nil {
 		t.Error("err(%s) != nil", err)
 	}
 
-	if (expectsiz > 0 && expectsiz != siz) {
+	if expectsiz > 0 && expectsiz != siz {
 		t.Errorf("siz(%d) != %d", siz, expectsiz)
 	}
 
@@ -93,9 +93,11 @@ func TestVerbatim(t *testing.T) {
 	maketest(123.0, 9, t)
 	maketest(true, 2, t)
 	maketest(false, 2, t)
-	maketest([]int{1,2,3}, 32, t)
-	maketest(map[string]AMFValue{"avc": 3, "ggg":42}, 29, t)
-	maketest(struct{A string}{A: "ac"}, 12, t)
-	maketest(struct{A string `name:"drrr"`}{A: "ac"}, 15, t)
+	maketest([]int{1, 2, 3}, 32, t)
+	maketest(map[string]AMFValue{"avc": 3, "ggg": 42}, 29, t)
+	maketest(struct{ A string }{A: "ac"}, 12, t)
+	maketest(struct {
+		A string `name:"drrr"`
+	}{A: "ac"}, 15, t)
 	maketest(nil, 1, t)
 }

@@ -2,8 +2,8 @@ package amf
 
 import (
 	"io"
-	"videostreamer/util"
 	"reflect"
+	"videostreamer/util"
 )
 
 const (
@@ -31,7 +31,7 @@ func EncodeAMF(out io.Writer, raw AMFValue) (ret int, err error) {
 
 	defer recover()
 
-	assure := func (inval int, inerr error) {
+	assure := func(inval int, inerr error) {
 		ret += inval
 		err = inerr
 		if err != nil {
