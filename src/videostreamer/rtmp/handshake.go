@@ -1,13 +1,14 @@
 package rtmp
 
 import (
+	"io"
+	"videostreamer/check"
+	"videostreamer/binutil"
+	"fmt"
+	"math/rand"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
-	"fmt"
-	"io"
-	"math/rand"
-	"videostreamer/util"
 )
 
 var (
@@ -35,28 +36,11 @@ var (
 	}
 )
 
-func makeDigest(buf []byte, key []byte, offs int) []byte {
-	sign := hmac.New(sha256.New, key)
-	if offs >= 0 && offs < len(buf) {
-		if offs != 0 {
-			sign.Write(buf[:offs])
-		}
-		if len(buf) != offs+32 {
-			sign.Write(buf[offs+32:])
-		}
-	} else {
-		sign.Write(buf)
-	}
-	return sign.Sum(nil)
-}
-
 func findDigest(buf []byte, mod int) (offs int) {
 	for n := 0; n < 4; n++ {
 		offs += int(buf[mod+n])
 	}
-
 	offs = (offs % 728) + mod + 4
-
 	dig := makeDigest(buf, clientKey2, offs)
 	if bytes.Compare(buf[offs:offs+32], dig) != 0 {
 		offs = -1
@@ -64,27 +48,35 @@ func findDigest(buf []byte, mod int) (offs int) {
 	return
 }
 
-func stage1(buf []byte) (dig []byte, err error) {
-	var (
-		roffs int
-		woffs int
-	)
-	if buf[0] != 0x03 {
-		err = fmt.Errorf("First byte of C0 was %v instead of 0x03", buf[0])
-		return
+func makeDigest(buf []byte, key []byte, offs int) []byte {
+	sign := hmac.New(sha256.New, key)
+	if offs >= 0 && offs < len(buf) {
+		if offs != 0 {
+			check.Check1(sign.Write(buf[:offs]))
+		}
+		if len(buf) != offs+32 {
+			check.Check1(sign.Write(buf[offs+32:]))
+		}
+	} else {
+		check.Check1(sign.Write(buf))
 	}
+	return sign.Sum(nil)
+}
 
+func stage1(buf []byte) (dig []byte) {
+	if buf[0] != 0x03 {
+		panic(fmt.Errorf("First byte of C0 was %#x instead of 0x03", buf[0]))
+	}
+	roffs := -1
 	if roffs = findDigest(buf[1:], 772); roffs == -1 {
 		if roffs = findDigest(buf[1:], 8); roffs == -1 {
-			err = fmt.Errorf("handshake: digest was not found")
-			return
+			panic(fmt.Errorf("Digest was not found in C0"))
 		}
 	}
-
 	dig = makeDigest(buf[roffs+1:roffs+1+32], serverKey, -1)
-
 	copy(buf[5:9], serverVersion)
-	rand.Read(buf[9:])
+	check.Check1(rand.Read(buf[9:]))
+	woffs := 0
 	for n := 9; n < 13; n++ {
 		woffs += int(buf[n])
 	}
@@ -93,34 +85,21 @@ func stage1(buf []byte) (dig []byte, err error) {
 	return
 }
 
-func stage2(buf []byte, dig []byte) (err error) {
-	if _, err = rand.Read(buf); err != nil {
-		return
-	}
+func stage2(buf []byte, dig []byte) {
+	check.Check1(rand.Read(buf))
 	copy(buf[1536-32:], makeDigest(buf, dig, 1536-32))
 	return
 }
 
 func Handshake(rw io.ReadWriter) (err error) {
-	var (
-		dig []byte
-		buf []byte
-	)
+	defer check.CheckPanicHandler(&err)
 
-	if buf, err = util.ReadBuf(rw, 1537); err != nil {
-		return
-	}
+	buf := binutil.ReadBuf(rw, 1537)
+	dig := stage1(buf)
+	binutil.WriteBuf(rw, buf)
+	stage2(buf[1:], dig)
+	binutil.WriteBuf(rw, buf[1:])
+	binutil.ReadBuf(rw, 1536)
 
-	if dig, err = stage1(buf); err != nil {
-		return
-	}
-	rw.Write(buf)
-
-	if err = stage2(buf[1:], dig); err != nil {
-		return
-	}
-	rw.Write(buf[1:])
-
-	_, err = util.ReadBuf(rw, 1536)
 	return
 }
