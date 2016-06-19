@@ -1,37 +1,35 @@
 package core
 
-type Meta interface {
-	Width()  int
-	Height() int
-	FPS()    int
+type MetaData struct {
+	Width     uint32
+	Height    uint32
+	Framerate uint32
 }
 
-const (
-	TYPE_VIDEO = 0x01
-	TYPE_AUDIO = 0x02
-)
-
-type Data interface {
-	Type()    int
-	Payload() []byte
+type VideoData struct {
+	Time uint32
+	Data []byte
 }
 
-type Client interface {
-	Consume(Data)
-	Refresh(Meta)
+type AudioData struct {
+	Time uint32
+	Data []byte
 }
 
-type Stream interface {
-	Name()     string
-	Metadata() Meta
-	List()     []Client
-	Add(Client)
-	Remove(Client)
-	Broadcast(Data)
-	Refresh(Meta)
+type Stream struct {
+	Name      string
+	Metadata  *MetaData
+	Consumers []Consumer
+	KeyVideo  *VideoData
+	KeyAudio  *AudioData
 }
 
-type Registry interface {
-	Stream(string) Stream
-	Streams()      []Stream
+type Application struct {
+	Streams map[string]*Stream
+}
+
+type Consumer interface {
+	ConsumeVideo(*VideoData)
+	ConsumeAudio(*AudioData)
+	ConsumeMeta(*MetaData)
 }

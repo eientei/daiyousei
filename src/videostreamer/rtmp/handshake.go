@@ -67,6 +67,7 @@ func stage1(buf []byte) (dig []byte) {
 	if buf[0] != 0x03 {
 		panic(fmt.Errorf("First byte of C0 was %#x instead of 0x03", buf[0]))
 	}
+
 	roffs := -1
 	if roffs = findDigest(buf[1:], 772); roffs == -1 {
 		if roffs = findDigest(buf[1:], 8); roffs == -1 {
@@ -93,13 +94,12 @@ func stage2(buf []byte, dig []byte) {
 
 func Handshake(rw io.ReadWriter) (err error) {
 	defer check.CheckPanicHandler(&err)
-
+	var dig []byte
 	buf := binutil.ReadBuf(rw, 1537)
-	dig := stage1(buf)
+	dig = stage1(buf)
 	binutil.WriteBuf(rw, buf)
 	stage2(buf[1:], dig)
 	binutil.WriteBuf(rw, buf[1:])
 	binutil.ReadBuf(rw, 1536)
-
 	return
 }

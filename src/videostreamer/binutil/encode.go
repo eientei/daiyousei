@@ -11,7 +11,7 @@ func WriteBuf(out io.Writer, value []byte) {
 }
 
 func WriteInt(out io.Writer, value int, size int) {
-	buf := make([]byte, 4)
+	buf := make([]byte, size)
 	for i := 0; i < size; i++ {
 		buf[size-i-1] = byte(value & 0xff)
 		value >>= 8
@@ -20,7 +20,7 @@ func WriteInt(out io.Writer, value int, size int) {
 }
 
 func WriteIntLE(out io.Writer, value int, size int) {
-	buf := make([]byte, 4)
+	buf := make([]byte, size)
 	for i := 0; i < size; i++ {
 		buf[i] = byte(value & 0xff)
 		value >>= 8

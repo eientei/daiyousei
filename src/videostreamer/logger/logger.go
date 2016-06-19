@@ -16,8 +16,8 @@ const (
 
 const (
 	PREFIX_DEBUG = "[DEBUG] "
-	PREFIX_INFO  = " [INFO] "
-	PREFIX_WARN  = " [WARN] "
+	PREFIX_INFO  = "[ INFO] "
+	PREFIX_WARN  = "[ WARN] "
 	PREFIX_ERROR = "[ERROR] "
 )
 
@@ -26,6 +26,11 @@ var (
 	flags  int         = log.LstdFlags
 	logger *log.Logger = log.New(os.Stdout, "", flags);
 )
+
+func Newline() {
+
+	os.Stdout.Write([]byte{'\n'})
+}
 
 func Level(newlevel int) {
 	level = newlevel

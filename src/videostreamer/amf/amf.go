@@ -29,7 +29,6 @@ func writeType(out io.Writer, value int) {
 
 func EncodeAMF(out io.Writer, plain AMFValue) (err error) {
 	defer check.CheckPanicHandler(&err)
-
 	value := reflect.ValueOf(plain)
 
 	switch value.Kind() {
@@ -126,6 +125,7 @@ func DecodeAMF(in io.Reader) (ret AMFValue, err error) {
 	case AMF_NULL:
 		ret = nil
 	case AMF_MAP:
+		binutil.ReadInt(in, 4)
 		fallthrough
 	case AMF_OBJECT:
 		var (
