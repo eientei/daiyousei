@@ -131,13 +131,14 @@ type RTMPClient struct {
 }
 
 func (client *RTMPClient) ConsumeVideo(data *core.VideoData) {
-	if (!client.Context.WasVideo) {
-		if ((data.Data[0] & 0xf0) >> 4) == 1 {
+	if !client.Context.WasVideo {
+		if data.Data[1] == 0 {
 			client.Context.WasVideo = true
 		} else {
 			return
 		}
 	}
+	client.Context.Stream.KeyVideo.Time = data.Time
 	client.Context.OutMsg <- NewMessage(Header{ChunkID:6, Timestamp: data.Time}, &VideoMessage{Data: data.Data})
 }
 
@@ -237,7 +238,6 @@ func handlecmd(context *RTMPContext, msg *Amf0CmdMessage) (err error) {
 		if context.Stream.Metadata != nil {
 			context.Client.ConsumeMeta(context.Stream.Metadata)
 		}
-
 		if context.Stream.KeyVideo != nil {
 			context.Client.ConsumeVideo(context.Stream.KeyVideo)
 		}
