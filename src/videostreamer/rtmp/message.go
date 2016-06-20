@@ -83,8 +83,11 @@ func Decode(raw *RawMessage) Message {
 		msg = decodeAudio(&raw.Data)
 	case MESSAGE_TYPE_VIDEO:
 		msg = decodeVideo(&raw.Data)
+	case MESSAGE_TYPE_AMF3_META: fallthrough
 	case MESSAGE_TYPE_AMF0_META:
 		msg = decodeAmf0Meta(&raw.Data)
+	case MESSAGE_TYPE_AMF3_CMD_ALT: fallthrough
+	case MESSAGE_TYPE_AMF3_CMD: fallthrough
 	case MESSAGE_TYPE_AMF0_CMD:
 		msg = decodeAmf0Cmd(&raw.Data)
 	default:

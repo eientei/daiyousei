@@ -76,7 +76,7 @@ func (context *RTMPContext) ReadChunk() (err error) {
 		raw.Header.Timestamp = uint32(binutil.ReadInt(context.Conn, 3))
 		raw.Header.Length    = uint32(binutil.ReadInt(context.Conn, 3))
 		raw.Header.Type      =  uint8(binutil.ReadInt(context.Conn, 1))
-		raw.Header.StreamID  = uint32(binutil.ReadInt(context.Conn, 4))
+		raw.Header.StreamID  = uint32(binutil.ReadIntLE(context.Conn, 4))
 		if raw.Header.Timestamp == 0xFFFFFF {
 			raw.Header.Timestamp = uint32(binutil.ReadInt(context.Conn, 4))
 		}
@@ -119,16 +119,20 @@ func (context *RTMPContext) WriteMessage(msg Message) (err error) {
 	var fmt uint8
 	msg.Encode(&buf)
 	prev := context.prevMessage(msg.Header().ChunkID)
-	fmt = BASIC_TYPE_FULL
-	if prev.Header.StreamID == msg.Header().StreamID && msg.Header().StreamID != 0 {
-		fmt = BASIC_TYPE_MEDIUM
-		if prev.Header.Length == uint32(buf.Len()) && prev.Header.Type == msg.Header().Type {
-			fmt = BASIC_TYPE_SHORT
-			if prev.Header.Timestamp + prev.Delta == msg.Header().Timestamp {
-				fmt = BASIC_TYPE_NONE
+	if msg.Header().ForceFmt {
+		fmt = msg.Header().Format
+	}  else {
+		fmt = BASIC_TYPE_FULL
+		if prev.Header.StreamID == msg.Header().StreamID && msg.Header().StreamID != 0 {
+			fmt = BASIC_TYPE_MEDIUM
+			if prev.Header.Length == uint32(buf.Len()) && prev.Header.Type == msg.Header().Type {
+				fmt = BASIC_TYPE_SHORT
+				if prev.Header.Timestamp + prev.Delta == msg.Header().Timestamp {
+					fmt = BASIC_TYPE_NONE
+				}
 			}
+			prev.Delta = msg.Header().Timestamp - prev.Header.Timestamp
 		}
-		prev.Delta = msg.Header().Timestamp - prev.Header.Timestamp
 	}
 	prev.Header = *msg.Header()
 
@@ -143,7 +147,7 @@ func (context *RTMPContext) WriteMessage(msg Message) (err error) {
 		binutil.WriteInt(context.Conn, int(ts), 3)
 		binutil.WriteInt(context.Conn, int(buf.Len()), 3)
 		binutil.WriteInt(context.Conn, int(msg.Header().Type), 1)
-		binutil.WriteInt(context.Conn, int(msg.Header().StreamID), 4)
+		binutil.WriteIntLE(context.Conn, int(msg.Header().StreamID), 4)
 		if msg.Header().Timestamp >= 0xFFFFFF {
 			binutil.WriteInt(context.Conn, int(msg.Header().Timestamp), 4)
 		}

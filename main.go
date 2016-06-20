@@ -22,7 +22,7 @@ func main() {
 	logger.Level(logger.LOG_ALL)
 	app := core.NewApplication()
 	latch := syncutil.NewSyncLatch()
-	go rtmp.Serve(app, latch.SubLatch(), ":1935")
+	go rtmp.Serve(app, latch.SubLatch(), "127.0.0.1:1935")
 
 	sig := make(chan os.Signal)
 	go sigcatch(sig, latch)

@@ -24,6 +24,7 @@ const (
 	MESSAGE_TYPE_EDGE           =  7
 	MESSAGE_TYPE_AUDIO          =  8
 	MESSAGE_TYPE_VIDEO          =  9
+	MESSAGE_TYPE_AMF3_CMD_ALT   = 11
 	MESSAGE_TYPE_AMF3_META      = 15
 	MESSAGE_TYPE_AMF3_SHARED    = 16
 	MESSAGE_TYPE_AMF3_CMD       = 17
@@ -49,6 +50,7 @@ type Header struct {
 	Length    uint32
 	Type      uint8
 	StreamID  uint32
+	ForceFmt  bool
 }
 
 type RawMessage struct {

@@ -80,13 +80,10 @@ func send(context *RTMPContext, latch *syncutil.SyncLatch) {
 			break
 		}
 		//logger.Debug("<-", msg)
-		/*
-		if (msg.Header().Type == MESSAGE_TYPE_VIDEO) {
-			dt := msg.(*VideoMessage).Data
-			logger.Debug("^^", len(dt), dt[len(dt)-10:])
-		}
-		*/
 		context.WriteMessage(msg)
+		if msg.Header().Type == MESSAGE_TYPE_SET_CHUNK_SIZE {
+			context.OutChunk = msg.(*SetChunkSizeMessage).Size
+		}
 	}
 	latch.Complete()
 }
@@ -97,12 +94,25 @@ func hndl(context *RTMPContext, latch *syncutil.SyncLatch) {
 		if msg == nil {
 			break
 		}
+		alt := false
 		//logger.Debug("->", msg)
 		switch msg.Header().Type {
 		case MESSAGE_TYPE_WINACK:
 			context.InAck = msg.(*WinackMessage).Size
+		case MESSAGE_TYPE_AMF3_CMD: fallthrough
+		case MESSAGE_TYPE_AMF3_CMD_ALT:
+			alt = true
+			fallthrough
 		case MESSAGE_TYPE_AMF0_CMD:
-			handlecmd(context, msg.(*Amf0CmdMessage))
+			cmdmsg := msg.(*Amf0CmdMessage)
+			if alt {
+				cmdmsg.Data = cmdmsg.Data[1:]
+			}
+			if err := handlecmd(context, cmdmsg); err != nil {
+				logger.Error(err)
+			}
+
+		case MESSAGE_TYPE_AMF3_META: fallthrough
 		case MESSAGE_TYPE_AMF0_META:
 			handlemeta(context, msg.(*Amf0MetaMessage))
 		case MESSAGE_TYPE_USER:
@@ -132,21 +142,40 @@ type RTMPClient struct {
 
 func (client *RTMPClient) ConsumeVideo(data *core.VideoData) {
 	if !client.Context.WasVideo {
-		if data.Data[1] == 0 {
+		if client.Context.Stream.KeyVideo != nil {
 			client.Context.WasVideo = true
-		} else {
-			return
+			logger.Debug("WASVIDEO")
+			client.Context.OutMsg <- NewMessage(Header{ChunkID: 2}, &UserMessage{
+				Event: USER_EVENT_STREAM_BEGIN,
+				First: 1,
+			})
+			if client.Context.Stream.Metadata != nil {
+				client.Context.Client.ConsumeMeta(client.Context.Stream.Metadata)
+			}
+			if client.Context.Stream.KeyVideo != nil {
+				client.Context.Client.ConsumeVideo(client.Context.Stream.KeyVideo)
+			}
+			if client.Context.Stream.KeyAudio != nil {
+				client.Context.Client.ConsumeAudio(client.Context.Stream.KeyAudio)
+			}
 		}
+		return
 	}
 	client.Context.Stream.KeyVideo.Time = data.Time
-	client.Context.OutMsg <- NewMessage(Header{ChunkID:6, Timestamp: data.Time}, &VideoMessage{Data: data.Data})
+	client.Context.OutMsg <- NewMessage(Header{ChunkID:6, Timestamp: data.Time, StreamID: 1}, &VideoMessage{Data: data.Data})
 }
 
 func (client *RTMPClient) ConsumeAudio(data *core.AudioData) {
-	client.Context.OutMsg <- NewMessage(Header{ChunkID:4, Timestamp: data.Time}, &AudioMessage{Data: data.Data})
+	if !client.Context.WasVideo {
+		return
+	}
+	client.Context.OutMsg <- NewMessage(Header{ChunkID:4, Timestamp: data.Time, StreamID: 1}, &AudioMessage{Data: data.Data})
 }
 
 func (client *RTMPClient) ConsumeMeta(data *core.MetaData) {
+	if !client.Context.WasVideo {
+		return
+	}
 	client.Context.OutMsg <- makeMetadata(data)
 }
 
@@ -167,7 +196,7 @@ func makeMetadata(data *core.MetaData) Message {
 		Audiocodecid  float64 `name:"audiocodecid"`
 
 	}{fw, fh, fw, fh, -1, ff, 7, 10})
-	return NewMessage(Header{ChunkID: 3}, &Amf0MetaMessage{Data: buf.Bytes()})
+	return NewMessage(Header{ChunkID: 3, StreamID: 1}, &Amf0MetaMessage{Data: buf.Bytes()})
 }
 
 func handlecmd(context *RTMPContext, msg *Amf0CmdMessage) (err error) {
@@ -179,18 +208,14 @@ func handlecmd(context *RTMPContext, msg *Amf0CmdMessage) (err error) {
 		serial := check.Check1(amf.DecodeAMF(rdr)).(float64)
 
 		context.OutMsg <- NewMessage(Header{ChunkID: 2}, &WinackMessage{Size: 5000000})
-		context.OutMsg <- NewMessage(Header{ChunkID: 2}, &SetPeerBandMessage{Size: 5000000})
-		context.OutMsg <- NewMessage(Header{ChunkID: 2}, &SetChunkSizeMessage{Size: 128})
-		context.OutMsg <- NewMessage(Header{ChunkID: 2}, &UserMessage{
-			Event: USER_EVENT_STREAM_BEGIN,
-			First: 1,
-		})
 
+		context.OutMsg <- NewMessage(Header{ChunkID: 2}, &SetPeerBandMessage{Size: 5000000, Type: 2})
+		context.OutMsg <- NewMessage(Header{ChunkID: 2}, &SetChunkSizeMessage{Size: 4096})
 		buf := bytes.Buffer{}
 		amf.EncodeAMF(&buf, "_result")
 		amf.EncodeAMF(&buf, serial)
 		amf.EncodeAMF(&buf, struct {
-			FmtVer string  `name:"fmtVer"`
+			FmsVer string  `name:"fmsVer"`
 			Caps   float64 `name:"capabilities"`
 		}{"FMS/3,0,1,123", 31})
 		amf.EncodeAMF(&buf, struct {
@@ -198,7 +223,7 @@ func handlecmd(context *RTMPContext, msg *Amf0CmdMessage) (err error) {
 			Code   string  `name:"code"`
 			Desc   string  `name:"description"`
 			ObjEnc float64 `name:"objectEncoding"`
-		}{"status", "NetConnection.Connect.Success", "Connection Success.", 0})
+		}{"status", "NetConnection.Connect.Success", "Connection succeeded.", 3})
 		context.OutMsg <- NewMessage(Header{ChunkID: 3}, &Amf0CmdMessage{Data: buf.Bytes()})
 	case "createStream":
 		serial := check.Check1(amf.DecodeAMF(rdr)).(float64)
@@ -214,9 +239,6 @@ func handlecmd(context *RTMPContext, msg *Amf0CmdMessage) (err error) {
 		streamname := check.Check1(amf.DecodeAMF(rdr)).(string)
 		context.Stream = context.App.AcquireStream(streamname)
 		context.Client = &RTMPClient{Context: context}
-		context.OutMsg <- NewMessage(Header{ChunkID: 2}, &SetChunkSizeMessage{Size: context.OutChunk})
-		context.OutMsg <- NewMessage(Header{ChunkID: 3}, &UserMessage{Event: USER_EVENT_STREAM_IS_RECORDED, First: 0})
-		context.OutMsg <- NewMessage(Header{ChunkID: 3}, &UserMessage{Event: USER_EVENT_STREAM_BEGIN, First: 0})
 
 		buf := bytes.Buffer{}
 		amf.EncodeAMF(&buf, "onStatus")
@@ -227,23 +249,13 @@ func handlecmd(context *RTMPContext, msg *Amf0CmdMessage) (err error) {
 			Code  string  `name:"code"`
 			Desc  string  `name:"description"`
 		}{"status", "NetStream.Play.Start", "Start live."})
-		context.OutMsg <- NewMessage(Header{ChunkID: 5}, &Amf0CmdMessage{Data: buf.Bytes()})
+		context.OutMsg <- NewMessage(Header{ChunkID: 5, StreamID: 1}, &Amf0CmdMessage{Data: buf.Bytes()})
 
 		buf = bytes.Buffer{}
 		amf.EncodeAMF(&buf, "|RtmpSampleAccess")
 		amf.EncodeAMF(&buf, true)
 		amf.EncodeAMF(&buf, true)
-		context.OutMsg <- NewMessage(Header{ChunkID: 5}, &Amf0MetaMessage{Data: buf.Bytes()})
-
-		if context.Stream.Metadata != nil {
-			context.Client.ConsumeMeta(context.Stream.Metadata)
-		}
-		if context.Stream.KeyVideo != nil {
-			context.Client.ConsumeVideo(context.Stream.KeyVideo)
-		}
-		if context.Stream.KeyAudio != nil {
-			context.Client.ConsumeAudio(context.Stream.KeyAudio)
-		}
+		context.OutMsg <- NewMessage(Header{ForceFmt: true, ChunkID: 5, StreamID: 1}, &Amf0MetaMessage{Data: buf.Bytes()})
 
 		context.Stream.Subscribe(context.Client)
 	case "publish":
@@ -251,8 +263,6 @@ func handlecmd(context *RTMPContext, msg *Amf0CmdMessage) (err error) {
 		amf.DecodeAMF(rdr) // nil
 		streamname := check.Check1(amf.DecodeAMF(rdr)).(string)
 		context.Stream = context.App.AcquireStream(streamname)
-
-		context.OutMsg <- NewMessage(Header{ChunkID: 3}, &UserMessage{Event: USER_EVENT_STREAM_IS_RECORDED, First: 0})
 
 		buf := bytes.Buffer{}
 		amf.EncodeAMF(&buf, "onStatus")
