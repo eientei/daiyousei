@@ -70,6 +70,9 @@ func recv(context *RTMPContext, latch *syncutil.SyncLatch) {
 	if context.Stream != nil && context.Client != nil {
 		context.Stream.Unsubscribe(context.Client)
 	}
+	if context.Stream != nil && context.Client == nil {
+		context.Stream.Unpublish()
+	}
 	latch.Complete()
 }
 
@@ -127,6 +130,9 @@ func hndl(context *RTMPContext, latch *syncutil.SyncLatch) {
 				viddata := core.NewVideoData(msg.Header().Timestamp, data)
 				if data[1] == 0 {
 					context.Stream.KeyVideo = viddata
+					if !context.Stream.Published {
+						context.Stream.Publish()
+					}
 				}
 				context.Stream.BroadcastVideo(viddata)
 			}
@@ -141,42 +147,29 @@ type RTMPClient struct {
 }
 
 func (client *RTMPClient) ConsumeVideo(data *core.VideoData) {
-	if !client.Context.WasVideo {
-		if client.Context.Stream.KeyVideo != nil {
-			client.Context.WasVideo = true
-			logger.Debug("WASVIDEO")
-			client.Context.OutMsg <- NewMessage(Header{ChunkID: 2}, &UserMessage{
-				Event: USER_EVENT_STREAM_BEGIN,
-				First: 1,
-			})
-			if client.Context.Stream.Metadata != nil {
-				client.Context.Client.ConsumeMeta(client.Context.Stream.Metadata)
-			}
-			if client.Context.Stream.KeyVideo != nil {
-				client.Context.Client.ConsumeVideo(client.Context.Stream.KeyVideo)
-			}
-			if client.Context.Stream.KeyAudio != nil {
-				client.Context.Client.ConsumeAudio(client.Context.Stream.KeyAudio)
-			}
-		}
-		return
-	}
-	client.Context.Stream.KeyVideo.Time = data.Time
 	client.Context.OutMsg <- NewMessage(Header{ChunkID:6, Timestamp: data.Time, StreamID: 1}, &VideoMessage{Data: data.Data})
 }
 
 func (client *RTMPClient) ConsumeAudio(data *core.AudioData) {
-	if !client.Context.WasVideo {
-		return
-	}
 	client.Context.OutMsg <- NewMessage(Header{ChunkID:4, Timestamp: data.Time, StreamID: 1}, &AudioMessage{Data: data.Data})
 }
 
 func (client *RTMPClient) ConsumeMeta(data *core.MetaData) {
-	if !client.Context.WasVideo {
-		return
-	}
 	client.Context.OutMsg <- makeMetadata(data)
+}
+
+func (client *RTMPClient) Publish() {
+	client.Context.OutMsg <- NewMessage(Header{ChunkID: 2}, &UserMessage{
+		Event: USER_EVENT_STREAM_BEGIN,
+		First: 1,
+	})
+}
+
+func (client *RTMPClient) Unpublish() {
+	client.Context.OutMsg <- NewMessage(Header{ChunkID: 2}, &UserMessage{
+		Event: USER_EVENT_STREAM_EOF,
+		First: 1,
+	})
 }
 
 func makeMetadata(data *core.MetaData) Message {
@@ -256,7 +249,9 @@ func handlecmd(context *RTMPContext, msg *Amf0CmdMessage) (err error) {
 		amf.EncodeAMF(&buf, true)
 		amf.EncodeAMF(&buf, true)
 		context.OutMsg <- NewMessage(Header{ForceFmt: true, ChunkID: 5, StreamID: 1}, &Amf0MetaMessage{Data: buf.Bytes()})
-
+		if context.Stream.Published {
+			context.Stream.Bootstrap(context.Client)
+		}
 		context.Stream.Subscribe(context.Client)
 	case "publish":
 		amf.DecodeAMF(rdr) // serial

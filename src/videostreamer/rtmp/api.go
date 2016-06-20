@@ -71,7 +71,6 @@ type RTMPContext struct {
 	App      *core.Application
 	Client   core.Consumer
 	Stream   *core.Stream
-	WasVideo bool
 	In       map[uint16]*RawMessage
 	Out      map[uint16]*RawMessage
 	InMsg    chan Message

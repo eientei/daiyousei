@@ -22,6 +22,7 @@ type Stream struct {
 	Consumers []Consumer
 	KeyVideo  *VideoData
 	KeyAudio  *AudioData
+	Published bool
 }
 
 type Application struct {
@@ -32,4 +33,6 @@ type Consumer interface {
 	ConsumeVideo(*VideoData)
 	ConsumeAudio(*AudioData)
 	ConsumeMeta(*MetaData)
+	Publish()
+	Unpublish()
 }
